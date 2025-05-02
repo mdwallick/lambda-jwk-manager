@@ -21,29 +21,38 @@ exports.handler = async (event) => {
       scope: "create:client_credentials update:clients read:clients",
     })
 
-    const credential = await auth0.clientCredentials.createCredential({
+    const cred_data = {
       name: `credential-for-${client_id}`,
-      kid: jwk.kid || undefined,
+      credential_type: "public_key",
+      alg: "RS256", // must be one of RS256, RS384, PS256
       pem,
-    })
+    }
 
-    await auth0.clients.updateClientCredentials(client_id, {
+    const credential = await auth0.clients.createCredential(
+      { client_id: client_id },
+      cred_data
+    )
+
+    const client_data = {
       client_authentication_methods: {
         private_key_jwt: {
           credentials: [
             {
-              credential_id: credential.id,
+              id: credential.data.id,
             },
           ],
         },
       },
-    })
+    }
+
+    console.log("CREATED CREDENTIAL", credential.data.id)
+    await auth0.clients.update({ client_id: client_id }, client_data)
 
     return {
       statusCode: 200,
       body: JSON.stringify({
         message: "Credential created and linked",
-        credential_id: credential.id,
+        credential_id: credential.data.id,
         client_id,
       }),
     }
