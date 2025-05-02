@@ -1,0 +1,33 @@
+# Node.js
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+pnpm-debug.log
+package-lock.json
+
+# Serverless build output
+.serverless/
+.sls-next/
+
+# Environment files
+.env
+.env.*
+
+# Local test files
+test-event.json
+
+# OS/system files
+.DS_Store
+Thumbs.db
+
+# VSCode and JetBrains IDEs
+.vscode/
+.idea/
+*.sw?
+
+# AWS credentials (never commit this!)
+.aws/
+
+# Optional: ZIPs or other artifacts
+*.zip
