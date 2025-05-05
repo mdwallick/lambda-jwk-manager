@@ -12,9 +12,9 @@ plugins:
   - serverless-dotenv-plugin
 
 functions:
-  linkCredential:
+  jwkManager:
     handler: index.handler
     events:
       - http:
-          path: link-credential
+          path: jwk-manager
           method: post
