@@ -31,3 +31,4 @@ Thumbs.db
 
 # Optional: ZIPs or other artifacts
 *.zip
+event.json
