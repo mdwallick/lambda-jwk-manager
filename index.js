@@ -1,20 +1,39 @@
-/*
-$ serverless invoke local --function jwkManager --path event.json
-*/
 const { ManagementClient } = require("auth0")
 const axios = require("axios")
 const jwkToPem = require("jwk-to-pem")
+const {
+  SecretsManagerClient,
+  GetSecretValueCommand,
+} = require("@aws-sdk/client-secrets-manager")
+
+async function getAuth0ClientSecret(secretName) {
+  const client = new SecretsManagerClient({
+    region: process.env.AWS_REGION || "us-east-1",
+  })
+  const command = new GetSecretValueCommand({ SecretId: secretName })
+  const response = await client.send(command)
+
+  // Check if SecretString exists and parse it
+  if (response.SecretString) {
+    const secret = JSON.parse(response.SecretString)
+    return secret.AUTH0_CLIENT_SECRET
+  } else {
+    throw new Error("SecretString is empty or not available.")
+  }
+}
 
 exports.handler = async (event) => {
   try {
+    const secretName = process.env.AUTH0_CLIENT_SECRET_SECRET_NAME
+    const auth0ClientSecret = await getAuth0ClientSecret(secretName)
+
     const auth0 = new ManagementClient({
       domain: process.env.AUTH0_DOMAIN,
       clientId: process.env.AUTH0_CLIENT_ID,
-      clientSecret: process.env.AUTH0_CLIENT_SECRET,
+      clientSecret: auth0ClientSecret,
       scope: "create:client_credentials update:clients read:clients",
     })
 
-    // Get all clients
     const clients = (await auth0.clients.getAll()) || []
 
     const results = []
@@ -40,14 +59,12 @@ exports.handler = async (event) => {
       try {
         const { data: jwks } = await axios.get(jwksUri)
 
-        // Expecting `keys` array in JWKS
         if (!jwks.keys || !Array.isArray(jwks.keys) || jwks.keys.length === 0) {
           console.warn(`No JWKs found at ${jwksUri}`)
           continue
         }
 
         const jwk = jwks.keys[0]
-
         const pem = jwkToPem(jwk)
 
         const cred_data = {
@@ -58,7 +75,7 @@ exports.handler = async (event) => {
         }
 
         const credential = await auth0.clients.createCredential(
-          { client_id: client_id },
+          { client_id },
           cred_data
         )
 
@@ -75,10 +92,10 @@ exports.handler = async (event) => {
           },
         }
 
-        await auth0.clients.update({ client_id: client_id }, client_data)
+        await auth0.clients.update({ client_id }, client_data)
 
         results.push({
-          client_id: client_id,
+          client_id,
           credential_id: credential.data.id,
         })
 
