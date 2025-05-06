@@ -12,10 +12,10 @@ package-lock.json
 
 # Environment files
 .env
-.env.*
 
 # Local test files
 test-event.json
+event.json
 
 # OS/system files
 .DS_Store
@@ -31,4 +31,3 @@ Thumbs.db
 
 # Optional: ZIPs or other artifacts
 *.zip
-event.json
