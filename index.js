@@ -24,7 +24,7 @@ async function getAuth0ClientSecret(secretName) {
 
 exports.handler = async (event) => {
   try {
-    const secretName = process.env.AUTH0_CLIENT_SECRET_SECRET_NAME
+    const secretName = process.env.AUTH0_CLIENT_SECRET_NAME
     const auth0ClientSecret = await getAuth0ClientSecret(secretName)
 
     const auth0 = new ManagementClient({

@@ -39,8 +39,8 @@ If it’s not installed, you can download it from [here](https://nodejs.org/).
     Clone the repository and navigate to the project directory:
 
     ```bash
-    git clone https://github.com/your/repository.git
-    cd repository
+    git clone https://github.com/mdwallick/lambda-jwk-manager.git
+    cd lambda-jwk-manager
     ```
 
 2.  Install Dependencies
@@ -77,15 +77,13 @@ If it’s not installed, you can download it from [here](https://nodejs.org/).
 
 4.  Configure `.env` File
 
-    In the project directory, create a `.env` file and add the following environment variables:
+    In the project directory, copy `.env.example` to `.env` file and fill in the following environment variables:
 
     ```ini
     AUTH0_DOMAIN=your-auth0-domain
     AUTH0_CLIENT_ID=your-client-id
-    AUTH0_CLIENT_SECRET_SECRET_NAME=your-secret-name
+    AUTH0_CLIENT_SECRET_NAME=your-secret-name
     ```
-
-    This `.env` file should contain the values for your Auth0 domain, client ID, and secret name that you created in the previous step.
 
 5.  Deploy the Service
 
