@@ -1,6 +1,5 @@
 const { ManagementClient } = require("auth0")
 const axios = require("axios")
-const crypto = require("crypto")
 const jwkToPem = require("jwk-to-pem")
 
 const {
@@ -8,16 +7,12 @@ const {
   GetSecretValueCommand,
 } = require("@aws-sdk/client-secrets-manager")
 
-const {
-  DynamoDBClient,
-  GetItemCommand,
-  PutItemCommand,
-} = require("@aws-sdk/client-dynamodb")
-
-const dynamo = new DynamoDBClient({ region: process.env.AWS_REGION })
-
 exports.handler = async (event) => {
   try {
+    const JWK_METADATA_KEY =
+      process.env.JWK_METADATA_KEY || "jwks_uri_DO_NOT_DELETE"
+    const EXPIRY_METADATA_KEY =
+      process.env.EXPIRY_METADATA_KEY || "expires_at_DO_NOT_DELETE"
     const secretName = process.env.AUTH0_CLIENT_SECRET_NAME
     const auth0ClientSecret = await getAuth0ClientSecret(secretName)
 
@@ -29,12 +24,12 @@ exports.handler = async (event) => {
     })
 
     const clients = (await auth0.clients.getAll()) || []
-
     const results = []
 
     for (const client of clients.data) {
       const client_id = client.client_id
-      const jwksUri = client?.client_metadata?.jwks_uri
+      const jwksUri = client?.client_metadata?.[JWK_METADATA_KEY]
+      const expiresAtString = client?.client_metadata?.[EXPIRY_METADATA_KEY]
 
       if (!jwksUri) {
         console.info(`jwks_uri is empty for client ${client_id}: skipping.`)
@@ -51,13 +46,31 @@ exports.handler = async (event) => {
       console.info(`Fetching JWK from ${jwksUri} for client ${client_id}`)
 
       try {
-        const { jwks, isFresh } = await getCachedOrFreshJwks(client_id, jwksUri)
-
-        if (!isFresh) {
+        const now = Date.now()
+        const expiresAt = parseInt(expiresAtString, 10)
+        if (!isNaN(expiresAt) && expiresAt > now) {
           console.info(
             `Cached JWKS still valid for client ${client_id}, skipping update.`
           )
           continue
+        }
+
+        const { data: jwks, headers } = await axios.get(jwksUri)
+
+        if (!jwks.keys || !Array.isArray(jwks.keys) || jwks.keys.length === 0) {
+          throw new Error(`No JWKS found at ${jwksUri}`)
+        }
+
+        let expiry = new Date(now + 5 * 60 * 1000)
+        const cacheControl = headers["cache-control"]
+
+        if (cacheControl?.includes("max-age")) {
+          const match = cacheControl.match(/max-age=(\d+)/)
+          if (match) {
+            expiry = new Date(now + parseInt(match[1], 10) * 1000)
+          }
+        } else if (headers["expires"]) {
+          expiry = new Date(headers["expires"])
         }
 
         const jwk = jwks.keys[0]
@@ -75,12 +88,10 @@ exports.handler = async (event) => {
           cred_data
         )
 
-        const client_metadata = {
-          kid: jwk.kid,
-        }
-
         const client_data = {
-          client_metadata,
+          client_metadata: {
+            [EXPIRY_METADATA_KEY]: expiry.getTime().toString(),
+          },
           client_authentication_methods: {
             private_key_jwt: {
               credentials: [{ id: credential.data.id }],
@@ -93,6 +104,7 @@ exports.handler = async (event) => {
         results.push({
           client_id,
           credential_id: credential.data.id,
+          expiresAt: expiry.getTime().toString(),
         })
 
         console.log(
@@ -120,76 +132,6 @@ exports.handler = async (event) => {
       body: JSON.stringify({ error: err.message }),
     }
   }
-}
-
-async function getCachedOrFreshJwks(clientId, jwksUri) {
-  const key = getHashKey(jwksUri)
-  const now = Date.now()
-
-  try {
-    const cached = await dynamo.send(
-      new GetItemCommand({
-        TableName: process.env.JWK_MANAGER_TABLE_NAME,
-        Key: {
-          key: { S: key },
-        },
-      })
-    )
-
-    const cachedItem = cached.Item
-    if (
-      cachedItem &&
-      cachedItem.expiresAt &&
-      new Date(cachedItem.expiresAt.S).getTime() > now
-    ) {
-      return {
-        jwks: JSON.parse(cachedItem.jwks.S),
-        isFresh: false,
-      }
-    }
-  } catch (err) {
-    console.warn(`DynamoDB lookup failed for key ${key}:`, err.message)
-  }
-
-  const { data: jwks, headers } = await axios.get(jwksUri)
-
-  if (!jwks.keys || !Array.isArray(jwks.keys) || jwks.keys.length === 0) {
-    throw new Error(`No JWKS found at ${jwksUri}`)
-  }
-
-  let expiresAt = new Date(now + 5 * 60 * 1000)
-  const cacheControl = headers["cache-control"]
-  if (cacheControl?.includes("max-age")) {
-    const match = cacheControl.match(/max-age=(\d+)/)
-    if (match) {
-      expiresAt = new Date(now + parseInt(match[1], 10) * 1000)
-    }
-  } else if (headers["expires"]) {
-    expiresAt = new Date(headers["expires"])
-  }
-
-  await dynamo.send(
-    new PutItemCommand({
-      TableName: process.env.JWK_MANAGER_TABLE_NAME,
-      Item: {
-        key: { S: key },
-        uri: { S: jwksUri },
-        jwks: { S: JSON.stringify(jwks) },
-        expiresAt: { S: expiresAt.toISOString() },
-        clientId: { S: clientId },
-        ttl: { N: Math.floor(expiresAt.getTime() / 1000).toString() },
-      },
-    })
-  )
-
-  return {
-    jwks,
-    isFresh: true,
-  }
-}
-
-function getHashKey(uri) {
-  return crypto.createHash("sha256").update(uri).digest("hex")
 }
 
 async function getAuth0ClientSecret(secretName) {

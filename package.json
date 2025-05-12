@@ -3,7 +3,6 @@
     "version": "1.0.0",
     "main": "index.js",
     "dependencies": {
-        "@aws-sdk/client-dynamodb": "^3.804.0",
         "@aws-sdk/client-secrets-manager": "^3.803.0",
         "auth0": "^4.22.0",
         "axios": "^1.9.0",

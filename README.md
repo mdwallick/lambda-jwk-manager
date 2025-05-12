@@ -13,21 +13,10 @@ Here is a diagram of what this lambda does:
 
 ![Lambda Flow Diagram](./images/lambda-jwk-manager-flow.png)
 
-The key material retrieved from a given JWKS URI will be cached in a DynamoDB table with the following schema:
-
-| Field     | Type                                                                                                                 |
-| --------- | -------------------------------------------------------------------------------------------------------------------- |
-| key       | String, hash of the JWKS URI                                                                                         |
-| uri       | String, the JWKS URI                                                                                                 |
-| jwks      | String, JSON string representing the key set                                                                         |
-| expiresAt | String, ISO date/time when the key set should be considered stale                                                    |
-| clientId  | String, the Auth0 client ID                                                                                          |
-| ttl       | Integer, the time to live for the database item. This is to allow DynamoDB to automatically clean up stale key sets. |
-
-With the combination of expiresAt and ttl, this Lambda can be run as frequently
-as necessary. The Lambda code checks the cached ket set data and only fetches a
-new key set and updates Auth0 client credentials when a new key set is
-downloaded for the first time, or if the cached key set has expired.
+Using expiresAt, this Lambda can be run as frequently as necessary. The Lambda
+code checks the cached ket set data and only fetches a new key set and updates
+Auth0 client credentials when a new key set is downloaded for the first time,
+or if the cached key set has expired.
 
 ## Onboarding New Auth0 Applications
 
@@ -138,6 +127,8 @@ If it’s not installed, you can download it from [here](https://nodejs.org/).
     AUTH0_DOMAIN=your-auth0-domain
     AUTH0_CLIENT_ID=your-client-id
     AUTH0_CLIENT_SECRET_NAME=jwk-manager-client-secret
+    JWK_METADATA_KEY=jwks_uri_DO_NOT_DELETE
+    EXPIRY_METADATA_KEY=expires_at_DO_NOT_DELETE
     ```
 
 6.  Deploy the Service

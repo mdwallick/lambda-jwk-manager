@@ -8,20 +8,15 @@ provider:
     AUTH0_DOMAIN: ${env:AUTH0_DOMAIN}
     AUTH0_CLIENT_ID: ${env:AUTH0_CLIENT_ID}
     AUTH0_CLIENT_SECRET_SECRET_NAME: ${env:AUTH0_CLIENT_SECRET_NAME}
+    JWK_METADATA_KEY: ${env:JWK_METADATA_KEY}
+    EXPIRY_METADATA_KEY: ${env:EXPIRY_METADATA_KEY}
 
   iamRoleStatements:
     - Effect: Allow
       Action:
         - secretsmanager:GetSecretValue
-        - dynamodb:PutItem
-        - dynamodb:GetItem
-        - dynamodb:UpdateItem
-        - dynamodb:DeleteItem
-        - dynamodb:Scan
-        - dynamodb:Query
       Resource:
         - arn:aws:secretsmanager:${aws:region}:${aws:accountId}:secret:${env:AUTH0_CLIENT_SECRET_NAME}-*
-        - arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/jwk-manager-table
 
 plugins:
   - serverless-dotenv-plugin
@@ -33,20 +28,3 @@ functions:
       - http:
           path: jwk-manager
           method: post
-
-resources:
-  Resources:
-    JwkManagerTable:
-      Type: AWS::DynamoDB::Table
-      Properties:
-        TableName: ${env:JWK_MANAGER_TABLE_NAME}
-        AttributeDefinitions:
-          - AttributeName: key
-            AttributeType: S
-        KeySchema:
-          - AttributeName: key
-            KeyType: HASH
-        BillingMode: PAY_PER_REQUEST
-        TimeToLiveSpecification:
-          AttributeName: ttl
-          Enabled: true
