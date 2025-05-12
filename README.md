@@ -6,6 +6,48 @@ This project contains a Lambda function that interacts with Auth0, fetches JSON 
 from URIs configured in Auth0 client metadata, and generates credentials for each client in your
 Auth0 account. The function is designed to be easy to configure and deploy using the Serverless Framework.
 
+This is used as a workaround to support remote JWKS URI key material when using the private key JWT client
+authentication method in Auth0.
+
+Here is a diagram of what this lambda does:
+
+![Lambda Flow Diagram](./images/lambda-jwk-manager-flow.png)
+
+The key material retrieved from a given JWKS URI will be cached in a DynamoDB table with the following schema:
+
+| Field     | Type                                                                                                                 |
+| --------- | -------------------------------------------------------------------------------------------------------------------- |
+| key       | String, hash of the JWKS URI                                                                                         |
+| uri       | String, the JWKS URI                                                                                                 |
+| jwks      | String, JSON string representing the key set                                                                         |
+| expiresAt | String, ISO date/time when the key set should be considered stale                                                    |
+| clientId  | String, the Auth0 client ID                                                                                          |
+| ttl       | Integer, the time to live for the database item. This is to allow DynamoDB to automatically clean up stale key sets. |
+
+With the combination of expiresAt and ttl, this Lambda can be run as frequently
+as necessary. The Lambda code checks the cached ket set data and only fetches a
+new key set and updates Auth0 client credentials when a new key set is
+downloaded for the first time, or if the cached key set has expired.
+
+## Onboarding New Auth0 Applications
+
+Each new OIDC client to be onboarded needs to define an application
+metadata key/value pair to indicate from where the key material should be
+gathered. Any OIDC client without the metadata value “jwks_uri” would be
+skipped.
+
+![Auth0 Application Metadata](./images/auth0-app-jwks-uri.png)
+
+With this approach one can simply onboard new OIDC clients that require JWKS
+URI by creating this key/value pair. No extra action is needed as the lambda
+function will automatically discover the JWKS_URI for that client.
+
+## Caveats
+
+- Only one public key can be active at a time for client authentication
+- The lambda uses the first key in the set for client authentication
+- Key sets with multiple keys are not supported
+
 ## Prerequisites
 
 Before you can deploy and use this project, make sure you have the following:
@@ -34,7 +76,20 @@ If it’s not installed, you can download it from [here](https://nodejs.org/).
 
 ## Setup
 
-1.  Clone the Repository
+1.  Create an Auth0 Application
+
+    Create a new Auth0 Machine to Machine application.
+
+    Authorize this new application to use the Auth0 management API with the
+    following scopes enabled:
+
+    - `create:client_credentials`
+    - `update:clients`
+    - `read:clients`
+
+    Make note of the Domain, Client ID and Client Secret values from the Settings tab.
+
+2.  Clone the Repository
 
     Clone the repository and navigate to the project directory:
 
@@ -43,7 +98,7 @@ If it’s not installed, you can download it from [here](https://nodejs.org/).
     cd lambda-jwk-manager
     ```
 
-2.  Install Dependencies
+3.  Install Dependencies
 
     Install the required npm dependencies:
 
@@ -51,7 +106,7 @@ If it’s not installed, you can download it from [here](https://nodejs.org/).
     npm install
     ```
 
-3.  Create AWS Secret for `AUTH0_CLIENT_SECRET`
+4.  Create AWS Secret for `AUTH0_CLIENT_SECRET`
 
     You need to create a secret in AWS Secrets Manager to securely store the `AUTH0_CLIENT_SECRET`.
 
@@ -61,7 +116,7 @@ If it’s not installed, you can download it from [here](https://nodejs.org/).
 
     ```bash
     aws secretsmanager create-secret \
-      --name {your secret name} \
+      --name jwk-manager-client-secret \
       --description "Auth0 Client Secret for jwk-manager Lambda" \
       --secret-string '{"AUTH0_CLIENT_SECRET":"your client secret"}' \
       --region us-east-1
@@ -71,21 +126,21 @@ If it’s not installed, you can download it from [here](https://nodejs.org/).
 
     ```bash
     aws secretsmanager get-secret-value \
-      --secret-id {your secret name} \
+      --secret-id jwk-manager-client-secret \
       --region us-east-1
     ```
 
-4.  Configure `.env` File
+5.  Configure `.env` File
 
     In the project directory, copy `.env.example` to `.env` file and fill in the following environment variables:
 
     ```ini
     AUTH0_DOMAIN=your-auth0-domain
     AUTH0_CLIENT_ID=your-client-id
-    AUTH0_CLIENT_SECRET_NAME=your-secret-name
+    AUTH0_CLIENT_SECRET_NAME=jwk-manager-client-secret
     ```
 
-5.  Deploy the Service
+6.  Deploy the Service
 
     Deploy the service to AWS using the Serverless Framework:
 
@@ -149,7 +204,7 @@ aws configure
 
 # Create the secret in Secrets Manager if it doesn't exist
 
-aws secretsmanager create-secret --name /my/secret/path --secret-string '{"AUTH0_CLIENT_SECRET": "your-secret-value"}' || echo "Secret already exists."
+aws secretsmanager create-secret --name jwk-manager-client-secret --secret-string '{"AUTH0_CLIENT_SECRET": "your-secret-value"}' || echo "Secret already exists."
 
 # Install dependencies
 
@@ -165,23 +220,6 @@ Run the script to automate secret creation and deployment:
 ```bash
 ./deploy.sh
 ```
-
-## IAM Permissions
-
-Ensure that the Lambda function has permissions to access AWS Secrets Manager. You can add the following IAM permissions in your `serverless.yml`:
-
-```yaml
-provider:
-name: aws
-runtime: nodejs18.x
-iamRoleStatements:
-  - Effect: "Allow"
-    Action:
-      - "secretsmanager:GetSecretValue"
-    Resource: "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:/my/secret/path"
-```
-
-This will give your Lambda function the necessary permissions to read the secret.
 
 ## Troubleshooting
 
